@@ -161,6 +161,21 @@
   .preset:hover { border-color: var(--accent); color: var(--text); }
   .preset.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 
+  .drone-preset {
+    padding: 0.4rem 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 500;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .drone-preset:hover { border-color: var(--warn); color: var(--text); }
+
   .btn {
     display: inline-flex;
     align-items: center;
@@ -523,8 +538,33 @@
   </div>
 
   <div class="control-group">
-    <label>Volume</label>
+    <label>Volume (FSK signal)</label>
     <input type="range" id="tx-vol" min="0" max="100" value="80" step="1">
+  </div>
+
+  <div class="detection-box" style="margin-bottom:1rem;">
+    <h3>Masking Drone</h3>
+    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+      <input type="checkbox" id="drone-enabled" style="width:16px; height:16px; accent-color:var(--accent);">
+      <span class="mono" style="font-size:0.7rem; color:var(--text-dim);">Enable masking drone</span>
+    </div>
+    <label>Drone Frequency</label>
+    <div style="display:flex; align-items:center; gap:0.5rem;">
+      <input type="range" id="drone-freq" min="50" max="200" value="100" step="1" style="flex:1;">
+      <span class="mono" style="font-size:0.8rem; color:var(--warn);" id="drone-freq-display">100 Hz</span>
+    </div>
+    <div class="preset-row" style="margin-top:0.4rem;">
+      <div class="drone-preset" data-freq="100">100 Hz (mains×2)</div>
+      <div class="drone-preset" data-freq="150">150 Hz (mains×3)</div>
+      <div class="drone-preset" data-freq="120">120 Hz</div>
+      <div class="drone-preset" data-freq="89">89 Hz</div>
+    </div>
+    <label class="mt-05">Drone Volume</label>
+    <div style="display:flex; align-items:center; gap:0.5rem;">
+      <input type="range" id="drone-vol" min="0" max="100" value="60" step="1" style="flex:1;">
+      <span class="mono" style="font-size:0.8rem; color:var(--warn);" id="drone-vol-display">60%</span>
+    </div>
+    <div class="mono" style="font-size:0.6rem; color:var(--text-dim); margin-top:0.4rem;" id="drone-note">A constant tone that masks the FSK switching. Choose a frequency away from your FSK pair.</div>
   </div>
 
   <div class="control-group">
@@ -766,6 +806,76 @@ document.getElementById('tx-vol').addEventListener('input', e => {
   }
 });
 
+// ── Drone controls ──
+let droneOsc = null;
+let droneGain = null;
+
+document.getElementById('drone-freq').addEventListener('input', e => {
+  document.getElementById('drone-freq-display').textContent = e.target.value + ' Hz';
+  if (droneOsc) droneOsc.frequency.setValueAtTime(parseInt(e.target.value), audioCtx.currentTime);
+});
+
+document.getElementById('drone-vol').addEventListener('input', e => {
+  document.getElementById('drone-vol-display').textContent = e.target.value + '%';
+  if (droneGain) droneGain.gain.setValueAtTime(parseInt(e.target.value) / 100, audioCtx.currentTime);
+});
+
+document.getElementById('drone-enabled').addEventListener('change', e => {
+  if (e.target.checked) {
+    startDrone();
+  } else {
+    stopDrone();
+  }
+});
+
+document.querySelectorAll('.drone-preset').forEach(p => {
+  p.addEventListener('click', () => {
+    const freq = parseInt(p.dataset.freq);
+    document.getElementById('drone-freq').value = freq;
+    document.getElementById('drone-freq-display').textContent = freq + ' Hz';
+    if (droneOsc) droneOsc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  });
+});
+
+function startDrone() {
+  const ctx = ensureAudioCtx();
+  ctx.resume(); // Ensure resumed for iOS
+  const freq = parseInt(document.getElementById('drone-freq').value);
+  const vol = parseInt(document.getElementById('drone-vol').value) / 100;
+
+  droneOsc = ctx.createOscillator();
+  droneGain = ctx.createGain();
+  droneOsc.type = 'sine';
+  droneOsc.frequency.setValueAtTime(freq, ctx.currentTime);
+  droneGain.gain.setValueAtTime(0, ctx.currentTime);
+  // Fade in over 2 seconds to sound natural
+  droneGain.gain.linearRampToValueAtTime(vol, ctx.currentTime + 2);
+  droneOsc.connect(droneGain);
+  droneGain.connect(ctx.destination);
+  droneOsc.start();
+
+  document.getElementById('drone-note').textContent = '▶ Drone active — ' + freq + ' Hz. Fading in over 2 seconds.';
+  document.getElementById('drone-note').style.color = 'var(--accent)';
+}
+
+function stopDrone() {
+  if (droneOsc) {
+    if (droneGain && audioCtx) {
+      // Fade out over 1 second
+      droneGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1);
+      const oscRef = droneOsc;
+      setTimeout(() => { try { oscRef.stop(); oscRef.disconnect(); } catch(e){} }, 1200);
+    } else {
+      try { droneOsc.stop(); droneOsc.disconnect(); } catch(e){}
+    }
+    droneOsc = null;
+    droneGain = null;
+  }
+
+  document.getElementById('drone-note').textContent = 'A constant tone that masks the FSK switching. Choose a frequency away from your FSK pair.';
+  document.getElementById('drone-note').style.color = 'var(--text-dim)';
+}
+
 // ── Data mode ──
 document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -798,13 +908,46 @@ document.getElementById('rx-target').addEventListener('input', e => {
 // ══════════════════
 
 function ensureAudioCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // iOS Safari requires resume to be called from a user gesture
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
   return audioCtx;
 }
 
-function startTransmit() {
+// iOS Safari fix: unlock audio on first touch/click anywhere on page
+// This creates a silent buffer and plays it, which permanently unlocks the AudioContext
+function unlockAudio() {
   const ctx = ensureAudioCtx();
+  if (ctx.state === 'running') return;
+
+  // Create and play a silent buffer
+  const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  source.start(0);
+
+  // Also try resume
+  ctx.resume().then(() => {
+    console.log('AudioContext unlocked, state:', ctx.state, 'sampleRate:', ctx.sampleRate);
+    updateBinAnalysis();
+  });
+}
+
+// Attach unlock to multiple event types for iOS compatibility
+['touchstart', 'touchend', 'click', 'keydown'].forEach(evt => {
+  document.addEventListener(evt, unlockAudio, { once: false, passive: true });
+});
+
+function startTransmit() {
+  // Create everything synchronously within the click handler for iOS Safari
+  const ctx = ensureAudioCtx();
+  ctx.resume(); // Ensure resumed in this gesture
+
   const freq0 = parseInt(document.getElementById('tx-freq0').value);
   const freq1 = parseInt(document.getElementById('tx-freq1').value);
   const freq = txMode === 'tone1' ? freq1 : freq0;
@@ -861,6 +1004,7 @@ document.getElementById('btn-send-msg').addEventListener('click', () => {
 
 async function sendFSK(message) {
   const ctx = ensureAudioCtx();
+  ctx.resume(); // Ensure resumed for iOS
   const freq0 = parseInt(document.getElementById('tx-freq0').value);
   const freq1 = parseInt(document.getElementById('tx-freq1').value);
   const vol = parseInt(document.getElementById('tx-vol').value) / 100;
@@ -913,12 +1057,26 @@ async function sendFSK(message) {
 
 async function startListening() {
   const ctx = ensureAudioCtx();
+  ctx.resume(); // iOS Safari
 
   try {
-    rxStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Request microphone with noise suppression and auto gain disabled
+    // This helps preserve low-frequency signals that noise cancellation would filter
+    rxStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      }
+    });
   } catch (e) {
-    alert('Microphone access denied. This tool needs mic access to detect acoustic signals.');
-    return;
+    // Fallback to basic audio if constraints aren't supported
+    try {
+      rxStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e2) {
+      alert('Microphone access denied. This tool needs mic access to detect acoustic signals.');
+      return;
+    }
   }
 
   const source = ctx.createMediaStreamSource(rxStream);
@@ -1113,6 +1271,24 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
   ctx.font = (9 * dpr) + 'px JetBrains Mono';
   ctx.fillText('F1:' + fskFreq1, f1x + 2 * dpr, 22 * dpr);
 
+  // Draw drone freq marker (orange) if enabled
+  if (document.getElementById('drone-enabled').checked) {
+    const droneFreq = parseInt(document.getElementById('drone-freq').value);
+    const droneBin = Math.round(droneFreq / binWidth);
+    const dx = droneBin * barW;
+    ctx.strokeStyle = 'rgba(251,146,60,0.5)';
+    ctx.lineWidth = 2 * dpr;
+    ctx.setLineDash([3 * dpr, 3 * dpr]);
+    ctx.beginPath();
+    ctx.moveTo(dx, 0);
+    ctx.lineTo(dx, h);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(251,146,60,0.7)';
+    ctx.font = (9 * dpr) + 'px JetBrains Mono';
+    ctx.fillText('D:' + droneFreq, dx + 2 * dpr, 34 * dpr);
+  }
+
   // Draw 50Hz harmonics markers (dim)
   for (let hz = 50; hz <= 300; hz += 50) {
     const bin = Math.round(hz / binWidth);
@@ -1132,6 +1308,9 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
   }
 
   // Draw bars
+  const droneEnabled = document.getElementById('drone-enabled').checked;
+  const droneBinIdx = droneEnabled ? Math.round(parseInt(document.getElementById('drone-freq').value) / binWidth) : -1;
+
   for (let i = 0; i < maxBin && i < data.length; i++) {
     const db = data[i];
     const barH = Math.max(0, ((db + 80) / 60) * h);
@@ -1141,6 +1320,8 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
       ctx.fillStyle = db > threshold ? 'rgba(74,222,128,0.95)' : 'rgba(74,222,128,0.5)';
     } else if (i === fskBin1) {
       ctx.fillStyle = db > threshold ? 'rgba(96,165,250,0.95)' : 'rgba(96,165,250,0.5)';
+    } else if (i === droneBinIdx) {
+      ctx.fillStyle = db > threshold ? 'rgba(251,146,60,0.9)' : 'rgba(251,146,60,0.4)';
     } else if (db > threshold) {
       ctx.fillStyle = 'rgba(251,146,60,0.7)';
     } else {
@@ -1218,23 +1399,13 @@ function addLog(containerId, dir, text) {
   }
 }
 
-// ── Log audio context sample rate on first interaction ──
-document.addEventListener('click', () => {
-  if (!audioCtx) {
-    ensureAudioCtx();
-    const binWidth = audioCtx.sampleRate / FFT_SIZE;
-    console.log('Sample rate:', audioCtx.sampleRate, 'Bin width:', binWidth.toFixed(2), 'Hz');
-    updateBinAnalysis();
-  }
-}, { once: true });
-
 // ── Try to init bin analysis early ──
 try {
   const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
   const sr = tempCtx.sampleRate;
   tempCtx.close();
   const binWidth = sr / FFT_SIZE;
-  document.getElementById('tx-bin-note').textContent = 'Sample rate: ' + sr + ' Hz, bin width: ' + binWidth.toFixed(2) + ' Hz. Click anywhere to confirm.';
+  document.getElementById('tx-bin-note').textContent = 'Sample rate: ' + sr + ' Hz, bin width: ' + binWidth.toFixed(2) + ' Hz. Tap anywhere to unlock audio.';
 } catch(e) {}
 </script>
 </body>
