@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acoustic Mesh PoC</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg: #0a0b0f;
+    --surface: #12141a;
+    --surface2: #1a1d26;
+    --border: #2a2d3a;
+    --text: #e2e4ea;
+    --text-dim: #7a7f94;
+    --accent: #4ade80;
+    --accent-dim: rgba(74, 222, 128, 0.15);
+    --warn: #fb923c;
+    --danger: #f87171;
+    --blue: #60a5fa;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .grain {
+    position: fixed; inset: 0; z-index: 9999; pointer-events: none; opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  header {
+    padding: 2rem 1.5rem 1rem;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(74,222,128,0.04) 0%, transparent 100%);
+  }
+
+  header h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.3rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    margin-bottom: 0.3rem;
+  }
+
+  header p {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    max-width: 500px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .tab {
+    flex: 1;
+    padding: 0.9rem 1rem;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    user-select: none;
+  }
+
+  .tab:hover { color: var(--text); background: var(--surface2); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--surface2); }
+
+  .panel { display: none; padding: 1.5rem; }
+  .panel.active { display: block; }
+
+  /* ── TRANSMIT ── */
+  .control-group {
+    margin-bottom: 1.5rem;
+  }
+
+  .control-group label {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 0.6rem;
+  }
+
+  .freq-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 0.3rem;
+  }
+
+  .freq-display span {
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--text-dim);
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--surface2);
+    outline: none;
+    margin: 0.5rem 0;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(74,222,128,0.4);
+  }
+
+  .preset-row {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+  }
+
+  .preset {
+    padding: 0.4rem 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 500;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .preset:hover { border-color: var(--accent); color: var(--text); }
+  .preset.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .btn-transmit {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .btn-transmit:hover { box-shadow: 0 0 20px rgba(74,222,128,0.3); }
+  .btn-transmit.active { background: var(--danger); color: white; }
+
+  .btn-listen {
+    background: var(--blue);
+    color: var(--bg);
+  }
+  .btn-listen:hover { box-shadow: 0 0 20px rgba(96,165,250,0.3); }
+  .btn-listen.active { background: var(--danger); color: white; }
+
+  /* ── MESSAGE TX ── */
+  .msg-input-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .msg-input-row input {
+    flex: 1;
+    padding: 0.7rem 0.9rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    outline: none;
+  }
+
+  .msg-input-row input:focus { border-color: var(--accent); }
+
+  .msg-input-row button {
+    padding: 0.7rem 1.2rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  /* ── LISTEN ── */
+  .spectrogram-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  .spectrogram-label {
+    padding: 0.6rem 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    background: var(--bg);
+  }
+
+  .detection-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .detection-box h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+  }
+
+  .detected-freq {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    transition: color 0.15s;
+  }
+
+  .detected-freq.found { color: var(--accent); }
+
+  .detected-db {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-top: 0.3rem;
+  }
+
+  .signal-bar-container {
+    margin-top: 0.8rem;
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .signal-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.1s, background 0.2s;
+  }
+
+  .signal-bar.weak { background: var(--danger); }
+  .signal-bar.medium { background: var(--warn); }
+  .signal-bar.strong { background: var(--accent); }
+
+  /* ── MESSAGE LOG ── */
+  .msg-log {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .msg-log-header {
+    padding: 0.6rem 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+
+  .msg-log-entry {
+    padding: 0.5rem 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0.8rem;
+  }
+
+  .msg-log-entry .time { color: var(--text-dim); white-space: nowrap; }
+  .msg-log-entry .data { color: var(--accent); word-break: break-all; }
+  .msg-log-entry .dir-tx { color: var(--warn); }
+  .msg-log-entry .dir-rx { color: var(--blue); }
+
+  .msg-log-empty {
+    padding: 1.5rem;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+
+  /* ── INFO PANEL ── */
+  .info-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .info-card h3 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 0.6rem;
+  }
+
+  .info-card p {
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: var(--text-dim);
+    margin-bottom: 0.5rem;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 500;
+    border-radius: 20px;
+    margin-bottom: 1rem;
+  }
+
+  .status-pill.idle { background: var(--surface2); color: var(--text-dim); }
+  .status-pill.active-tx { background: rgba(74,222,128,0.15); color: var(--accent); }
+  .status-pill.active-rx { background: rgba(96,165,250,0.15); color: var(--blue); }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .status-pill.active-tx .status-dot,
+  .status-pill.active-rx .status-dot {
+    animation: pulse-dot 1s infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ── DATA MODE ── */
+  .data-mode-row {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+
+  .mode-btn {
+    flex: 1;
+    padding: 0.6rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    font-weight: 500;
+    text-align: center;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .mode-btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── LISTEN CONFIG ── */
+  .listen-config {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .listen-config .control-group {
+    flex: 1;
+    min-width: 120px;
+    margin-bottom: 0;
+  }
+
+  .threshold-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--blue);
+  }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<header>
+  <h1>// ACOUSTIC MESH PoC</h1>
+  <p>Low-frequency data-over-sound experiment. Transmit and detect tones using phone speakers and microphones.</p>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="transmit">Transmit</div>
+  <div class="tab" data-tab="listen">Listen</div>
+  <div class="tab" data-tab="info">Info</div>
+</div>
+
+<!-- ════════ TRANSMIT PANEL ════════ -->
+<div class="panel active" id="panel-transmit">
+
+  <div class="status-pill idle" id="tx-status">
+    <div class="status-dot"></div>
+    <span>IDLE</span>
+  </div>
+
+  <div class="control-group">
+    <label>Freq 0 (binary zero)</label>
+    <div class="freq-display" id="tx-freq0-display">53 <span>Hz</span></div>
+    <input type="range" id="tx-freq0" min="40" max="200" value="53" step="1">
+  </div>
+
+  <div class="control-group">
+    <label>Freq 1 (binary one)</label>
+    <div class="freq-display" id="tx-freq1-display">59 <span>Hz</span></div>
+    <input type="range" id="tx-freq1" min="40" max="200" value="59" step="1">
+  </div>
+
+  <div class="detection-box" style="margin-bottom:1rem;">
+    <h3>Bin Analysis</h3>
+    <div style="display:flex; gap:1rem;">
+      <div style="flex:1;">
+        <div style="font-size:0.65rem; color:var(--text-dim); font-family:'JetBrains Mono',monospace;">FREQ 0 BIN</div>
+        <div class="mono" style="font-size:1rem; color:var(--accent);" id="tx-bin0">—</div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:0.65rem; color:var(--text-dim); font-family:'JetBrains Mono',monospace;">FREQ 1 BIN</div>
+        <div class="mono" style="font-size:1rem; color:var(--blue);" id="tx-bin1">—</div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:0.65rem; color:var(--text-dim); font-family:'JetBrains Mono',monospace;">BIN GAP</div>
+        <div class="mono" style="font-size:1rem;" id="tx-bin-gap">—</div>
+      </div>
+    </div>
+    <div class="mono" style="font-size:0.6rem; color:var(--text-dim); margin-top:0.5rem;" id="tx-bin-note">Detecting sample rate...</div>
+  </div>
+
+  <div class="control-group">
+    <label>Preset Pairs</label>
+    <div class="preset-row">
+      <div class="preset active" data-f0="53" data-f1="59">53/59</div>
+      <div class="preset" data-f0="53" data-f1="67">53/67</div>
+      <div class="preset" data-f0="53" data-f1="79">53/79</div>
+      <div class="preset" data-f0="59" data-f1="73">59/73</div>
+      <div class="preset" data-f0="67" data-f1="79">67/79</div>
+      <div class="preset" data-f0="73" data-f1="97">73/97</div>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label>Volume</label>
+    <input type="range" id="tx-vol" min="0" max="100" value="80" step="1">
+  </div>
+
+  <div class="control-group">
+    <label>Bit Duration (ms)</label>
+    <div style="display:flex; align-items:center; gap:0.5rem;">
+      <input type="range" id="tx-bitdur" min="100" max="1000" value="300" step="50" style="flex:1;">
+      <span class="mono" style="font-size:0.8rem; color:var(--accent);" id="tx-bitdur-display">300 ms</span>
+    </div>
+    <div class="mono" style="font-size:0.6rem; color:var(--text-dim); margin-top:0.3rem;" id="tx-rate-display">~3.3 bits/sec</div>
+  </div>
+
+  <div class="data-mode-row">
+    <div class="mode-btn active" data-mode="tone">Tone (Freq 0)</div>
+    <div class="mode-btn" data-mode="tone1">Tone (Freq 1)</div>
+    <div class="mode-btn" data-mode="fsk">FSK Message</div>
+  </div>
+
+  <button class="btn btn-transmit" id="btn-tx">
+    ▶ START TRANSMITTING
+  </button>
+
+  <div id="fsk-input" style="display:none;">
+    <div class="msg-input-row">
+      <input type="text" id="fsk-msg" placeholder="Type a short message..." maxlength="64">
+      <button id="btn-send-msg">SEND</button>
+    </div>
+  </div>
+
+  <div class="msg-log" style="margin-top:1rem;">
+    <div class="msg-log-header">Transmission Log</div>
+    <div id="tx-log">
+      <div class="msg-log-empty">No transmissions yet</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ LISTEN PANEL ════════ -->
+<div class="panel" id="panel-listen">
+
+  <div class="status-pill idle" id="rx-status">
+    <div class="status-dot"></div>
+    <span>IDLE</span>
+  </div>
+
+  <div class="listen-config">
+    <div class="control-group">
+      <label>Detection Threshold</label>
+      <div class="threshold-display" id="thresh-display">-50 dB</div>
+      <input type="range" id="rx-thresh" min="-80" max="-20" value="-50" step="1">
+    </div>
+    <div class="control-group">
+      <label>Target Frequency</label>
+      <div class="threshold-display" id="target-freq-display">73 Hz</div>
+      <input type="range" id="rx-target" min="40" max="200" value="73" step="1">
+    </div>
+  </div>
+
+  <button class="btn btn-listen" id="btn-rx">
+    ◉ START LISTENING
+  </button>
+
+  <div class="spectrogram-container" style="margin-top:1rem;">
+    <div class="spectrogram-label">
+      <span>Frequency Spectrum (0–300 Hz)</span>
+      <span id="canvas-fps"></span>
+    </div>
+    <canvas id="spectrum" height="200"></canvas>
+  </div>
+
+  <div class="spectrogram-container">
+    <div class="spectrogram-label">
+      <span>Waterfall (Time ↓)</span>
+    </div>
+    <canvas id="waterfall" height="200"></canvas>
+  </div>
+
+  <div class="detection-box">
+    <h3>Peak Detection</h3>
+    <div class="detected-freq" id="det-freq">— Hz</div>
+    <div class="detected-db" id="det-db">— dB</div>
+    <div class="signal-bar-container">
+      <div class="signal-bar" id="det-bar"></div>
+    </div>
+  </div>
+
+  <div class="detection-box">
+    <h3>Target Frequency Monitor</h3>
+    <div class="detected-freq" id="target-det-freq">— Hz</div>
+    <div class="detected-db" id="target-det-db">— dB</div>
+    <div class="signal-bar-container">
+      <div class="signal-bar" id="target-det-bar"></div>
+    </div>
+  </div>
+
+  <div class="msg-log">
+    <div class="msg-log-header">Detection Log</div>
+    <div id="rx-log">
+      <div class="msg-log-empty">No detections yet</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ INFO PANEL ════════ -->
+<div class="panel" id="panel-info">
+  <div class="info-card">
+    <h3>What is this?</h3>
+    <p>A proof-of-concept for data-over-sound communication using low frequencies (40–200 Hz). One device transmits tones through its speaker; another detects them via microphone using FFT (Fast Fourier Transform) analysis built into the browser.</p>
+    <p>The goal: test whether devices can communicate acoustically through walls using frequency-shift keying (FSK) — switching between two tones to encode binary data.</p>
+  </div>
+  <div class="info-card">
+    <h3>FSK Frequency Pairs</h3>
+    <p>Two frequencies encode binary: Freq 0 = "zero", Freq 1 = "one". The frequencies must land in different FFT bins to be distinguishable. The bin gap indicator shows whether your chosen pair has enough separation.</p>
+    <p><strong>Preset pairs</strong> use prime numbers that avoid 50 Hz mains harmonics (which would interfere with detection in countries using 50 Hz AC power, including Iran).</p>
+    <p><strong>53/59 Hz</strong> — lowest pair, hardest to hear, 2 bin gap (tight). <strong>53/67 Hz</strong> — low, 4 bin gap (solid). <strong>73/97 Hz</strong> — conservative, 8 bin gap (very reliable).</p>
+  </div>
+  <div class="info-card">
+    <h3>Transmission Modes</h3>
+    <p><strong>Tone (Freq 0/1)</strong> — continuous single frequency. Use to test detection and range for each frequency independently.</p>
+    <p><strong>FSK Message</strong> — encodes text as binary using the two frequencies. Includes a 16-bit alternating preamble for sync, a length byte, message bytes, and an end marker.</p>
+  </div>
+  <div class="info-card">
+    <h3>Testing Tips</h3>
+    <p>1. Open this page on two devices. One transmits, the other listens.</p>
+    <p>2. Start with Tone mode to confirm each frequency is detectable.</p>
+    <p>3. Check the bin analysis — if gap is 0, the pair won't work.</p>
+    <p>4. Try placing the transmitting device face-down on a hard surface to amplify bass.</p>
+    <p>5. Test at night when ambient noise is lowest.</p>
+    <p>6. Note: below ~50 Hz, some microphones may filter out the signal due to noise cancellation.</p>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════
+// ACOUSTIC MESH PoC — Core Engine
+// ══════════════════════════════════════
+
+let audioCtx = null;
+let txOsc = null;
+let txGain = null;
+let txActive = false;
+let txMode = 'tone';
+
+let rxStream = null;
+let rxAnalyser = null;
+let rxActive = false;
+let rxAnimFrame = null;
+
+const FFT_SIZE = 16384; // High resolution for low-frequency discrimination
+const WATERFALL_HISTORY = 200;
+let waterfallData = [];
+
+// ── Tab switching ──
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Presets (frequency pairs) ──
+document.querySelectorAll('.preset').forEach(p => {
+  p.addEventListener('click', () => {
+    document.querySelectorAll('.preset').forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+    const f0 = parseInt(p.dataset.f0);
+    const f1 = parseInt(p.dataset.f1);
+    document.getElementById('tx-freq0').value = f0;
+    document.getElementById('tx-freq1').value = f1;
+    document.getElementById('tx-freq0-display').innerHTML = f0 + ' <span>Hz</span>';
+    document.getElementById('tx-freq1-display').innerHTML = f1 + ' <span>Hz</span>';
+    if (txOsc && txActive) {
+      const activeFreq = txMode === 'tone1' ? f1 : f0;
+      txOsc.frequency.setValueAtTime(activeFreq, audioCtx.currentTime);
+    }
+    updateBinAnalysis();
+  });
+});
+
+// ── Freq sliders ──
+document.getElementById('tx-freq0').addEventListener('input', e => {
+  document.getElementById('tx-freq0-display').innerHTML = e.target.value + ' <span>Hz</span>';
+  document.querySelectorAll('.preset').forEach(p => p.classList.remove('active'));
+  if (txOsc && txActive && txMode === 'tone') {
+    txOsc.frequency.setValueAtTime(parseInt(e.target.value), audioCtx.currentTime);
+  }
+  updateBinAnalysis();
+});
+
+document.getElementById('tx-freq1').addEventListener('input', e => {
+  document.getElementById('tx-freq1-display').innerHTML = e.target.value + ' <span>Hz</span>';
+  document.querySelectorAll('.preset').forEach(p => p.classList.remove('active'));
+  if (txOsc && txActive && txMode === 'tone1') {
+    txOsc.frequency.setValueAtTime(parseInt(e.target.value), audioCtx.currentTime);
+  }
+  updateBinAnalysis();
+});
+
+// ── Bin analysis display ──
+function updateBinAnalysis() {
+  const ctx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  const sr = ctx.sampleRate;
+  const binWidth = sr / FFT_SIZE;
+  const f0 = parseInt(document.getElementById('tx-freq0').value);
+  const f1 = parseInt(document.getElementById('tx-freq1').value);
+  const bin0 = Math.round(f0 / binWidth);
+  const bin1 = Math.round(f1 / binWidth);
+  const gap = Math.abs(bin1 - bin0);
+
+  document.getElementById('tx-bin0').textContent = 'Bin ' + bin0 + ' (' + (bin0 * binWidth).toFixed(1) + '-' + ((bin0 + 1) * binWidth).toFixed(1) + ' Hz)';
+  document.getElementById('tx-bin1').textContent = 'Bin ' + bin1 + ' (' + (bin1 * binWidth).toFixed(1) + '-' + ((bin1 + 1) * binWidth).toFixed(1) + ' Hz)';
+
+  const gapEl = document.getElementById('tx-bin-gap');
+  gapEl.textContent = gap + (gap === 1 ? ' bin' : ' bins');
+  if (gap === 0) { gapEl.style.color = 'var(--danger)'; }
+  else if (gap <= 1) { gapEl.style.color = 'var(--warn)'; }
+  else if (gap <= 2) { gapEl.style.color = 'var(--warn)'; }
+  else { gapEl.style.color = 'var(--accent)'; }
+
+  const noteEl = document.getElementById('tx-bin-note');
+  if (gap === 0) noteEl.textContent = '⚠ Same bin! Frequencies indistinguishable. Increase gap.';
+  else if (gap === 1) noteEl.textContent = '⚠ Adjacent bins — may work in quiet conditions, risky with noise.';
+  else if (gap === 2) noteEl.textContent = '◉ 2 bins apart — workable, test in your environment.';
+  else noteEl.textContent = '✓ ' + gap + ' bins apart — good separation. (Sample rate: ' + sr + ' Hz, bin width: ' + binWidth.toFixed(2) + ' Hz)';
+}
+
+// ── Bit duration slider ──
+document.getElementById('tx-bitdur').addEventListener('input', e => {
+  const ms = parseInt(e.target.value);
+  document.getElementById('tx-bitdur-display').textContent = ms + ' ms';
+  document.getElementById('tx-rate-display').textContent = '~' + (1000 / ms).toFixed(1) + ' bits/sec';
+});
+
+// ── Volume slider ──
+document.getElementById('tx-vol').addEventListener('input', e => {
+  if (txGain && txActive) {
+    txGain.gain.setValueAtTime(parseInt(e.target.value) / 100, audioCtx.currentTime);
+  }
+});
+
+// ── Data mode ──
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    txMode = btn.dataset.mode;
+    document.getElementById('fsk-input').style.display = txMode === 'fsk' ? 'block' : 'none';
+    // If actively transmitting a tone, switch frequency
+    if (txOsc && txActive && (txMode === 'tone' || txMode === 'tone1')) {
+      const freq = txMode === 'tone1'
+        ? parseInt(document.getElementById('tx-freq1').value)
+        : parseInt(document.getElementById('tx-freq0').value);
+      txOsc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      const status = document.getElementById('tx-status');
+      status.querySelector('span').textContent = 'TRANSMITTING ' + freq + ' Hz';
+    }
+  });
+});
+
+// ── Listen config ──
+document.getElementById('rx-thresh').addEventListener('input', e => {
+  document.getElementById('thresh-display').textContent = e.target.value + ' dB';
+});
+document.getElementById('rx-target').addEventListener('input', e => {
+  document.getElementById('target-freq-display').textContent = e.target.value + ' Hz';
+});
+
+// ══════════════════
+// TRANSMIT ENGINE
+// ══════════════════
+
+function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function startTransmit() {
+  const ctx = ensureAudioCtx();
+  const freq0 = parseInt(document.getElementById('tx-freq0').value);
+  const freq1 = parseInt(document.getElementById('tx-freq1').value);
+  const freq = txMode === 'tone1' ? freq1 : freq0;
+  const vol = parseInt(document.getElementById('tx-vol').value) / 100;
+
+  txOsc = ctx.createOscillator();
+  txGain = ctx.createGain();
+  txOsc.type = 'sine';
+  txOsc.frequency.setValueAtTime(freq, ctx.currentTime);
+  txGain.gain.setValueAtTime(vol, ctx.currentTime);
+  txOsc.connect(txGain);
+  txGain.connect(ctx.destination);
+  txOsc.start();
+  txActive = true;
+
+  const btn = document.getElementById('btn-tx');
+  btn.classList.add('active');
+  btn.textContent = '■ STOP TRANSMITTING';
+
+  const status = document.getElementById('tx-status');
+  status.className = 'status-pill active-tx';
+  status.querySelector('span').textContent = 'TRANSMITTING ' + freq + ' Hz';
+
+  addLog('tx-log', 'TX', 'Started ' + txMode + ' @ ' + freq + ' Hz');
+  updateBinAnalysis();
+}
+
+function stopTransmit() {
+  if (txOsc) { txOsc.stop(); txOsc.disconnect(); txOsc = null; }
+  if (txGain) { txGain.disconnect(); txGain = null; }
+  txActive = false;
+
+  const btn = document.getElementById('btn-tx');
+  btn.classList.remove('active');
+  btn.textContent = '▶ START TRANSMITTING';
+
+  const status = document.getElementById('tx-status');
+  status.className = 'status-pill idle';
+  status.querySelector('span').textContent = 'IDLE';
+
+  addLog('tx-log', 'TX', 'Stopped');
+}
+
+document.getElementById('btn-tx').addEventListener('click', () => {
+  txActive ? stopTransmit() : startTransmit();
+});
+
+// ── FSK Message ──
+document.getElementById('btn-send-msg').addEventListener('click', () => {
+  const msg = document.getElementById('fsk-msg').value.trim();
+  if (!msg) return;
+  sendFSK(msg);
+});
+
+async function sendFSK(message) {
+  const ctx = ensureAudioCtx();
+  const freq0 = parseInt(document.getElementById('tx-freq0').value);
+  const freq1 = parseInt(document.getElementById('tx-freq1').value);
+  const vol = parseInt(document.getElementById('tx-vol').value) / 100;
+  const bitDuration = parseInt(document.getElementById('tx-bitdur').value) / 1000;
+
+  // Convert message to binary
+  const bits = [];
+  // Preamble: 16 alternating bits for sync
+  for (let i = 0; i < 16; i++) bits.push(i % 2);
+  // Length byte
+  const len = message.length;
+  for (let b = 7; b >= 0; b--) bits.push((len >> b) & 1);
+  // Message bytes
+  for (let i = 0; i < message.length; i++) {
+    const byte = message.charCodeAt(i);
+    for (let b = 7; b >= 0; b--) {
+      bits.push((byte >> b) & 1);
+    }
+  }
+  // End marker: 8x '1' bits
+  for (let i = 0; i < 8; i++) bits.push(1);
+
+  const totalTime = bits.length * bitDuration;
+  addLog('tx-log', 'TX', 'FSK sending: "' + message + '" (' + bits.length + ' bits, ' + totalTime.toFixed(1) + 's) — freqs ' + freq0 + '/' + freq1 + ' Hz');
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  gain.gain.setValueAtTime(vol, ctx.currentTime);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+
+  for (let i = 0; i < bits.length; i++) {
+    const t = ctx.currentTime + i * bitDuration;
+    osc.frequency.setValueAtTime(bits[i] ? freq1 : freq0, t);
+  }
+
+  gain.gain.setValueAtTime(0, ctx.currentTime + totalTime);
+  osc.stop(ctx.currentTime + totalTime + 0.1);
+
+  setTimeout(() => {
+    addLog('tx-log', 'TX', 'FSK complete: "' + message + '"');
+  }, totalTime * 1000);
+}
+
+// ══════════════════
+// LISTEN ENGINE
+// ══════════════════
+
+async function startListening() {
+  const ctx = ensureAudioCtx();
+
+  try {
+    rxStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    alert('Microphone access denied. This tool needs mic access to detect acoustic signals.');
+    return;
+  }
+
+  const source = ctx.createMediaStreamSource(rxStream);
+  rxAnalyser = ctx.createAnalyser();
+  rxAnalyser.fftSize = FFT_SIZE;
+  rxAnalyser.smoothingTimeConstant = 0.8;
+  source.connect(rxAnalyser);
+  rxActive = true;
+
+  const btn = document.getElementById('btn-rx');
+  btn.classList.add('active');
+  btn.textContent = '■ STOP LISTENING';
+
+  const status = document.getElementById('rx-status');
+  status.className = 'status-pill active-rx';
+  status.querySelector('span').textContent = 'LISTENING';
+
+  addLog('rx-log', 'RX', 'Microphone active, FFT size: ' + FFT_SIZE);
+
+  waterfallData = [];
+  analyseLoop();
+}
+
+function stopListening() {
+  rxActive = false;
+  if (rxAnimFrame) cancelAnimationFrame(rxAnimFrame);
+  if (rxStream) { rxStream.getTracks().forEach(t => t.stop()); rxStream = null; }
+  rxAnalyser = null;
+
+  const btn = document.getElementById('btn-rx');
+  btn.classList.remove('active');
+  btn.textContent = '◉ START LISTENING';
+
+  const status = document.getElementById('rx-status');
+  status.className = 'status-pill idle';
+  status.querySelector('span').textContent = 'IDLE';
+}
+
+document.getElementById('btn-rx').addEventListener('click', () => {
+  rxActive ? stopListening() : startListening();
+});
+
+// ── Analysis loop ──
+let lastDetection = 0;
+let frameCount = 0;
+let lastFpsTime = performance.now();
+
+function analyseLoop() {
+  if (!rxActive) return;
+  rxAnimFrame = requestAnimationFrame(analyseLoop);
+
+  const bufferLength = rxAnalyser.frequencyBinCount;
+  const dataArray = new Float32Array(bufferLength);
+  rxAnalyser.getFloatFrequencyData(dataArray);
+
+  const sampleRate = audioCtx.sampleRate;
+  const binWidth = sampleRate / FFT_SIZE; // Hz per bin
+  const maxDisplayHz = 300;
+  const maxBin = Math.ceil(maxDisplayHz / binWidth);
+
+  // Find peak in 40–200 Hz range
+  const minBin = Math.floor(40 / binWidth);
+  const maxSearchBin = Math.ceil(200 / binWidth);
+  let peakDb = -Infinity;
+  let peakBin = 0;
+
+  for (let i = minBin; i <= maxSearchBin && i < bufferLength; i++) {
+    if (dataArray[i] > peakDb) {
+      peakDb = dataArray[i];
+      peakBin = i;
+    }
+  }
+
+  const peakFreq = peakBin * binWidth;
+  const threshold = parseInt(document.getElementById('rx-thresh').value);
+
+  // Peak detection display
+  const detFreqEl = document.getElementById('det-freq');
+  const detDbEl = document.getElementById('det-db');
+  const detBar = document.getElementById('det-bar');
+
+  if (peakDb > threshold) {
+    detFreqEl.textContent = peakFreq.toFixed(1) + ' Hz';
+    detFreqEl.classList.add('found');
+  } else {
+    detFreqEl.textContent = '— Hz';
+    detFreqEl.classList.remove('found');
+  }
+  detDbEl.textContent = peakDb.toFixed(1) + ' dB';
+
+  const barPct = Math.max(0, Math.min(100, ((peakDb + 80) / 60) * 100));
+  detBar.style.width = barPct + '%';
+  detBar.className = 'signal-bar' + (barPct < 30 ? ' weak' : barPct < 60 ? ' medium' : ' strong');
+
+  // Target frequency monitor
+  const targetFreq = parseInt(document.getElementById('rx-target').value);
+  const targetBin = Math.round(targetFreq / binWidth);
+  const targetDb = targetBin < bufferLength ? dataArray[targetBin] : -100;
+
+  const tDetFreqEl = document.getElementById('target-det-freq');
+  const tDetDbEl = document.getElementById('target-det-db');
+  const tDetBar = document.getElementById('target-det-bar');
+
+  tDetFreqEl.textContent = targetFreq + ' Hz';
+  tDetDbEl.textContent = targetDb.toFixed(1) + ' dB';
+
+  if (targetDb > threshold) {
+    tDetFreqEl.classList.add('found');
+  } else {
+    tDetFreqEl.classList.remove('found');
+  }
+
+  const tBarPct = Math.max(0, Math.min(100, ((targetDb + 80) / 60) * 100));
+  tDetBar.style.width = tBarPct + '%';
+  tDetBar.className = 'signal-bar' + (tBarPct < 30 ? ' weak' : tBarPct < 60 ? ' medium' : ' strong');
+
+  // Log significant detections (max once per 2 sec)
+  if (peakDb > threshold && Date.now() - lastDetection > 2000) {
+    lastDetection = Date.now();
+    addLog('rx-log', 'RX', 'Detected ' + peakFreq.toFixed(1) + ' Hz @ ' + peakDb.toFixed(1) + ' dB');
+  }
+
+  // Draw spectrum
+  drawSpectrum(dataArray, maxBin, binWidth, threshold, targetFreq);
+  drawWaterfall(dataArray, maxBin);
+
+  // FPS counter
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 1000) {
+    document.getElementById('canvas-fps').textContent = frameCount + ' fps';
+    frameCount = 0;
+    lastFpsTime = now;
+  }
+}
+
+// ── Spectrum drawing ──
+function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
+  const canvas = document.getElementById('spectrum');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  if (canvas.width !== canvas.clientWidth * dpr) {
+    canvas.width = canvas.clientWidth * dpr;
+    canvas.height = 200 * dpr;
+  }
+
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const barW = w / maxBin;
+
+  // Get FSK frequencies
+  const fskFreq0 = parseInt(document.getElementById('tx-freq0').value);
+  const fskFreq1 = parseInt(document.getElementById('tx-freq1').value);
+  const fskBin0 = Math.round(fskFreq0 / binWidth);
+  const fskBin1 = Math.round(fskFreq1 / binWidth);
+
+  // Draw threshold line
+  const threshY = h - ((threshold + 80) / 60) * h;
+  ctx.strokeStyle = 'rgba(248,113,113,0.4)';
+  ctx.lineWidth = 1 * dpr;
+  ctx.setLineDash([4 * dpr, 4 * dpr]);
+  ctx.beginPath();
+  ctx.moveTo(0, threshY);
+  ctx.lineTo(w, threshY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw FSK freq 0 marker (green)
+  const f0x = fskBin0 * barW;
+  ctx.strokeStyle = 'rgba(74,222,128,0.6)';
+  ctx.lineWidth = 2 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(f0x, 0);
+  ctx.lineTo(f0x, h);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(74,222,128,0.7)';
+  ctx.font = (9 * dpr) + 'px JetBrains Mono';
+  ctx.fillText('F0:' + fskFreq0, f0x + 2 * dpr, 10 * dpr);
+
+  // Draw FSK freq 1 marker (blue)
+  const f1x = fskBin1 * barW;
+  ctx.strokeStyle = 'rgba(96,165,250,0.6)';
+  ctx.lineWidth = 2 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(f1x, 0);
+  ctx.lineTo(f1x, h);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(96,165,250,0.7)';
+  ctx.font = (9 * dpr) + 'px JetBrains Mono';
+  ctx.fillText('F1:' + fskFreq1, f1x + 2 * dpr, 22 * dpr);
+
+  // Draw 50Hz harmonics markers (dim)
+  for (let hz = 50; hz <= 300; hz += 50) {
+    const bin = Math.round(hz / binWidth);
+    if (bin < maxBin) {
+      const x = bin * barW;
+      ctx.strokeStyle = 'rgba(122,127,148,0.15)';
+      ctx.lineWidth = 1 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(122,127,148,0.35)';
+      ctx.font = (8 * dpr) + 'px JetBrains Mono';
+      ctx.fillText(hz + '', x + 2 * dpr, h - 4 * dpr);
+    }
+  }
+
+  // Draw bars
+  for (let i = 0; i < maxBin && i < data.length; i++) {
+    const db = data[i];
+    const barH = Math.max(0, ((db + 80) / 60) * h);
+    const x = i * barW;
+
+    if (i === fskBin0) {
+      ctx.fillStyle = db > threshold ? 'rgba(74,222,128,0.95)' : 'rgba(74,222,128,0.5)';
+    } else if (i === fskBin1) {
+      ctx.fillStyle = db > threshold ? 'rgba(96,165,250,0.95)' : 'rgba(96,165,250,0.5)';
+    } else if (db > threshold) {
+      ctx.fillStyle = 'rgba(251,146,60,0.7)';
+    } else {
+      ctx.fillStyle = 'rgba(122,127,148,0.2)';
+    }
+
+    ctx.fillRect(x, h - barH, Math.max(1, barW - 1), barH);
+  }
+}
+
+// ── Waterfall drawing ──
+function drawWaterfall(data, maxBin) {
+  const canvas = document.getElementById('waterfall');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+
+  if (canvas.width !== canvas.clientWidth * dpr) {
+    canvas.width = canvas.clientWidth * dpr;
+    canvas.height = 200 * dpr;
+  }
+
+  // Store current row
+  const row = [];
+  for (let i = 0; i < maxBin && i < data.length; i++) {
+    row.push(data[i]);
+  }
+  waterfallData.push(row);
+  if (waterfallData.length > WATERFALL_HISTORY) waterfallData.shift();
+
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const rowH = h / WATERFALL_HISTORY;
+  const colW = w / maxBin;
+
+  for (let y = 0; y < waterfallData.length; y++) {
+    const rowData = waterfallData[y];
+    for (let x = 0; x < rowData.length; x++) {
+      const db = rowData[x];
+      const intensity = Math.max(0, Math.min(1, (db + 80) / 50));
+
+      const r = Math.floor(intensity * 74);
+      const g = Math.floor(intensity * 222);
+      const b = Math.floor(intensity * 128);
+
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(x * colW, y * rowH, Math.max(1, colW), Math.max(1, rowH));
+    }
+  }
+}
+
+// ── Log helper ──
+function addLog(containerId, dir, text) {
+  const container = document.getElementById(containerId);
+  const empty = container.querySelector('.msg-log-empty');
+  if (empty) empty.remove();
+
+  const entry = document.createElement('div');
+  entry.className = 'msg-log-entry';
+
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-GB', { hour12: false });
+
+  entry.innerHTML =
+    '<span class="time">' + time + '</span>' +
+    '<span class="dir-' + dir.toLowerCase() + '">' + dir + '</span>' +
+    '<span class="data">' + text + '</span>';
+
+  container.prepend(entry);
+
+  // Keep max 50 entries
+  while (container.children.length > 50) {
+    container.removeChild(container.lastChild);
+  }
+}
+
+// ── Log audio context sample rate on first interaction ──
+document.addEventListener('click', () => {
+  if (!audioCtx) {
+    ensureAudioCtx();
+    const binWidth = audioCtx.sampleRate / FFT_SIZE;
+    console.log('Sample rate:', audioCtx.sampleRate, 'Bin width:', binWidth.toFixed(2), 'Hz');
+    updateBinAnalysis();
+  }
+}, { once: true });
+
+// ── Try to init bin analysis early ──
+try {
+  const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const sr = tempCtx.sampleRate;
+  tempCtx.close();
+  const binWidth = sr / FFT_SIZE;
+  document.getElementById('tx-bin-note').textContent = 'Sample rate: ' + sr + ' Hz, bin width: ' + binWidth.toFixed(2) + ' Hz. Click anywhere to confirm.';
+} catch(e) {}
+</script>
+</body>
+</html>
