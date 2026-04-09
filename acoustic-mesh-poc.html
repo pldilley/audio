@@ -110,6 +110,21 @@
     font-weight: 700;
     color: var(--accent);
     margin-bottom: 0.3rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .freq-display:hover { opacity: 0.8; }
+  .freq-edit-input {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--surface2);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 0 0.3rem;
+    width: 6ch;
+    outline: none;
   }
 
   .freq-display span {
@@ -497,13 +512,13 @@
   <div class="control-group">
     <label>Freq 0 (binary zero)</label>
     <div class="freq-display" id="tx-freq0-display">53 <span>Hz</span></div>
-    <input type="range" id="tx-freq0" min="40" max="200" value="53" step="1">
+    <input type="range" id="tx-freq0" min="30" max="200" value="53" step="1">
   </div>
 
   <div class="control-group">
     <label>Freq 1 (binary one)</label>
     <div class="freq-display" id="tx-freq1-display">59 <span>Hz</span></div>
-    <input type="range" id="tx-freq1" min="40" max="200" value="59" step="1">
+    <input type="range" id="tx-freq1" min="30" max="200" value="59" step="1">
   </div>
 
   <div class="detection-box" style="margin-bottom:1rem;">
@@ -618,7 +633,7 @@
     <div class="control-group">
       <label>Target Frequency</label>
       <div class="threshold-display" id="target-freq-display">73 Hz</div>
-      <input type="range" id="rx-target" min="40" max="200" value="73" step="1">
+      <input type="range" id="rx-target" min="30" max="200" value="73" step="1">
     </div>
   </div>
 
@@ -903,6 +918,51 @@ document.getElementById('rx-target').addEventListener('input', e => {
   document.getElementById('target-freq-display').textContent = e.target.value + ' Hz';
 });
 
+// ── Click-to-edit freq displays (easier than sliders on mobile) ──
+function makeDisplayEditable(displayId, sliderId, renderFn) {
+  const display = document.getElementById(displayId);
+  const slider = document.getElementById(sliderId);
+  display.addEventListener('click', () => {
+    if (display.querySelector('input')) return;
+    const min = parseInt(slider.min);
+    const max = parseInt(slider.max);
+    const current = slider.value;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.inputMode = 'numeric';
+    input.className = 'freq-edit-input';
+    input.min = min; input.max = max; input.step = slider.step || 1;
+    input.value = current;
+    display.innerHTML = '';
+    display.appendChild(input);
+    input.focus();
+    input.select();
+    const commit = () => {
+      let v = parseInt(input.value);
+      if (isNaN(v)) v = parseInt(current);
+      v = Math.max(min, Math.min(max, v));
+      slider.value = v;
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+      renderFn(v);
+    };
+    const cancel = () => renderFn(parseInt(slider.value));
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); input.value = current; cancel(); input.blur(); }
+    });
+  });
+}
+makeDisplayEditable('tx-freq0-display', 'tx-freq0', v => {
+  document.getElementById('tx-freq0-display').innerHTML = v + ' <span>Hz</span>';
+});
+makeDisplayEditable('tx-freq1-display', 'tx-freq1', v => {
+  document.getElementById('tx-freq1-display').innerHTML = v + ' <span>Hz</span>';
+});
+makeDisplayEditable('target-freq-display', 'rx-target', v => {
+  document.getElementById('target-freq-display').textContent = v + ' Hz';
+});
+
 // ══════════════════
 // TRANSMIT ENGINE
 // ══════════════════
@@ -1137,8 +1197,8 @@ function analyseLoop() {
   const maxDisplayHz = 300;
   const maxBin = Math.ceil(maxDisplayHz / binWidth);
 
-  // Find peak in 40–200 Hz range
-  const minBin = Math.floor(40 / binWidth);
+  // Find peak in 30–200 Hz range
+  const minBin = Math.floor(30 / binWidth);
   const maxSearchBin = Math.ceil(200 / binWidth);
   let peakDb = -Infinity;
   let peakBin = 0;
