@@ -510,26 +510,26 @@
   </div>
 
   <div class="control-group">
-    <label>Freq 0 (binary zero)</label>
+    <label>Freq A</label>
     <div class="freq-display" id="tx-freq0-display">53 <span>Hz</span></div>
-    <input type="range" id="tx-freq0" min="30" max="200" value="53" step="1">
+    <input type="range" id="tx-freq0" min="10" max="200" value="53" step="1">
   </div>
 
   <div class="control-group">
-    <label>Freq 1 (binary one)</label>
+    <label>Freq B</label>
     <div class="freq-display" id="tx-freq1-display">59 <span>Hz</span></div>
-    <input type="range" id="tx-freq1" min="30" max="200" value="59" step="1">
+    <input type="range" id="tx-freq1" min="10" max="200" value="59" step="1">
   </div>
 
   <div class="detection-box" style="margin-bottom:1rem;">
     <h3>Bin Analysis</h3>
     <div style="display:flex; gap:1rem;">
       <div style="flex:1;">
-        <div style="font-size:0.65rem; color:var(--text-dim); font-family:'JetBrains Mono',monospace;">FREQ 0 BIN</div>
+        <div style="font-size:0.65rem; color:var(--text-dim); font-family:'JetBrains Mono',monospace;">FREQ A BIN</div>
         <div class="mono" style="font-size:1rem; color:var(--accent);" id="tx-bin0">—</div>
       </div>
       <div style="flex:1;">
-        <div style="font-size:0.65rem; color:var(--text-dim); font-family:'JetBrains Mono',monospace;">FREQ 1 BIN</div>
+        <div style="font-size:0.65rem; color:var(--text-dim); font-family:'JetBrains Mono',monospace;">FREQ B BIN</div>
         <div class="mono" style="font-size:1rem; color:var(--blue);" id="tx-bin1">—</div>
       </div>
       <div style="flex:1;">
@@ -592,21 +592,27 @@
   </div>
 
   <div class="data-mode-row">
-    <div class="mode-btn active" data-mode="tone">Tone (Freq 0)</div>
-    <div class="mode-btn" data-mode="tone1">Tone (Freq 1)</div>
+    <div class="mode-btn active" data-mode="tone">Tone A</div>
+    <div class="mode-btn" data-mode="tone1">Tone B</div>
+    <div class="mode-btn" data-mode="dual">Tone A+B (dual)</div>
+    <!-- FSK Message mode disabled — coming back to this after hardware testing.
     <div class="mode-btn" data-mode="fsk">FSK Message</div>
+    -->
   </div>
 
   <button class="btn btn-transmit" id="btn-tx">
     ▶ START TRANSMITTING
   </button>
 
+  <!-- FSK message input disabled — re-enable with the FSK mode button later.
   <div id="fsk-input" style="display:none;">
     <div class="msg-input-row">
       <input type="text" id="fsk-msg" placeholder="Type a short message..." maxlength="64">
       <button id="btn-send-msg">SEND</button>
     </div>
   </div>
+  -->
+  <div id="fsk-input" style="display:none;"></div>
 
   <div class="msg-log" style="margin-top:1rem;">
     <div class="msg-log-header">Transmission Log</div>
@@ -633,7 +639,7 @@
     <div class="control-group">
       <label>Target Frequency</label>
       <div class="threshold-display" id="target-freq-display">73 Hz</div>
-      <input type="range" id="rx-target" min="30" max="200" value="73" step="1">
+      <input type="range" id="rx-target" min="10" max="200" value="73" step="1">
     </div>
   </div>
 
@@ -717,8 +723,11 @@
 // ══════════════════════════════════════
 
 let audioCtx = null;
-let txOsc = null;
-let txGain = null;
+let txOsc = null;       // primary oscillator (Tone A, Tone B, or A in dual mode)
+let txOsc2 = null;      // secondary oscillator (B in dual mode)
+let txGain = null;      // primary gain
+let txGain2 = null;     // secondary gain (dual mode)
+const TX_RAMP = 0.02;   // 20ms gain ramp to avoid start/stop clicks
 let txActive = false;
 let txMode = 'tone';
 
@@ -753,8 +762,13 @@ document.querySelectorAll('.preset').forEach(p => {
     document.getElementById('tx-freq0-display').innerHTML = f0 + ' <span>Hz</span>';
     document.getElementById('tx-freq1-display').innerHTML = f1 + ' <span>Hz</span>';
     if (txOsc && txActive) {
-      const activeFreq = txMode === 'tone1' ? f1 : f0;
-      txOsc.frequency.setValueAtTime(activeFreq, audioCtx.currentTime);
+      if (txMode === 'dual') {
+        txOsc.frequency.setValueAtTime(f0, audioCtx.currentTime);
+        if (txOsc2) txOsc2.frequency.setValueAtTime(f1, audioCtx.currentTime);
+      } else {
+        const activeFreq = txMode === 'tone1' ? f1 : f0;
+        txOsc.frequency.setValueAtTime(activeFreq, audioCtx.currentTime);
+      }
     }
     updateBinAnalysis();
   });
@@ -764,7 +778,7 @@ document.querySelectorAll('.preset').forEach(p => {
 document.getElementById('tx-freq0').addEventListener('input', e => {
   document.getElementById('tx-freq0-display').innerHTML = e.target.value + ' <span>Hz</span>';
   document.querySelectorAll('.preset').forEach(p => p.classList.remove('active'));
-  if (txOsc && txActive && txMode === 'tone') {
+  if (txOsc && txActive && (txMode === 'tone' || txMode === 'dual')) {
     txOsc.frequency.setValueAtTime(parseInt(e.target.value), audioCtx.currentTime);
   }
   updateBinAnalysis();
@@ -773,8 +787,10 @@ document.getElementById('tx-freq0').addEventListener('input', e => {
 document.getElementById('tx-freq1').addEventListener('input', e => {
   document.getElementById('tx-freq1-display').innerHTML = e.target.value + ' <span>Hz</span>';
   document.querySelectorAll('.preset').forEach(p => p.classList.remove('active'));
-  if (txOsc && txActive && txMode === 'tone1') {
+  if (txActive && txMode === 'tone1' && txOsc) {
     txOsc.frequency.setValueAtTime(parseInt(e.target.value), audioCtx.currentTime);
+  } else if (txActive && txMode === 'dual' && txOsc2) {
+    txOsc2.frequency.setValueAtTime(parseInt(e.target.value), audioCtx.currentTime);
   }
   updateBinAnalysis();
 });
@@ -816,8 +832,14 @@ document.getElementById('tx-bitdur').addEventListener('input', e => {
 
 // ── Volume slider ──
 document.getElementById('tx-vol').addEventListener('input', e => {
-  if (txGain && txActive) {
-    txGain.gain.setValueAtTime(parseInt(e.target.value) / 100, audioCtx.currentTime);
+  if (!txActive || !audioCtx) return;
+  const vol = parseInt(e.target.value) / 100;
+  if (txMode === 'dual') {
+    const perTone = vol * 0.5;
+    if (txGain)  txGain.gain.setValueAtTime(perTone, audioCtx.currentTime);
+    if (txGain2) txGain2.gain.setValueAtTime(perTone, audioCtx.currentTime);
+  } else if (txGain) {
+    txGain.gain.setValueAtTime(vol, audioCtx.currentTime);
   }
 });
 
@@ -897,15 +919,12 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     txMode = btn.dataset.mode;
-    document.getElementById('fsk-input').style.display = txMode === 'fsk' ? 'block' : 'none';
-    // If actively transmitting a tone, switch frequency
-    if (txOsc && txActive && (txMode === 'tone' || txMode === 'tone1')) {
-      const freq = txMode === 'tone1'
-        ? parseInt(document.getElementById('tx-freq1').value)
-        : parseInt(document.getElementById('tx-freq0').value);
-      txOsc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      const status = document.getElementById('tx-status');
-      status.querySelector('span').textContent = 'TRANSMITTING ' + freq + ' Hz';
+    const fskInputEl = document.getElementById('fsk-input');
+    if (fskInputEl) fskInputEl.style.display = txMode === 'fsk' ? 'block' : 'none';
+    // If actively transmitting, restart cleanly so dual<->single mode switching works
+    if (txActive) {
+      stopTransmit();
+      startTransmit();
     }
   });
 });
@@ -1003,6 +1022,21 @@ function unlockAudio() {
   document.addEventListener(evt, unlockAudio, { once: false, passive: true });
 });
 
+// Helper: spin up an oscillator + gain with a soft fade-in (kills click).
+function spawnTone(ctx, freq, peakVol) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, ctx.currentTime);
+  // Start at zero, ramp up to peakVol over TX_RAMP seconds — avoids step discontinuity click.
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(peakVol, ctx.currentTime + TX_RAMP);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  return { osc, gain };
+}
+
 function startTransmit() {
   // Create everything synchronously within the click handler for iOS Safari
   const ctx = ensureAudioCtx();
@@ -1010,17 +1044,20 @@ function startTransmit() {
 
   const freq0 = parseInt(document.getElementById('tx-freq0').value);
   const freq1 = parseInt(document.getElementById('tx-freq1').value);
-  const freq = txMode === 'tone1' ? freq1 : freq0;
   const vol = parseInt(document.getElementById('tx-vol').value) / 100;
 
-  txOsc = ctx.createOscillator();
-  txGain = ctx.createGain();
-  txOsc.type = 'sine';
-  txOsc.frequency.setValueAtTime(freq, ctx.currentTime);
-  txGain.gain.setValueAtTime(vol, ctx.currentTime);
-  txOsc.connect(txGain);
-  txGain.connect(ctx.destination);
-  txOsc.start();
+  if (txMode === 'dual') {
+    // Two simultaneous tones — split volume so combined RMS doesn't clip the output.
+    const perTone = vol * 0.5;
+    const a = spawnTone(ctx, freq0, perTone);
+    const b = spawnTone(ctx, freq1, perTone);
+    txOsc = a.osc; txGain = a.gain;
+    txOsc2 = b.osc; txGain2 = b.gain;
+  } else {
+    const freq = txMode === 'tone1' ? freq1 : freq0;
+    const t = spawnTone(ctx, freq, vol);
+    txOsc = t.osc; txGain = t.gain;
+  }
   txActive = true;
 
   const btn = document.getElementById('btn-tx');
@@ -1029,15 +1066,42 @@ function startTransmit() {
 
   const status = document.getElementById('tx-status');
   status.className = 'status-pill active-tx';
-  status.querySelector('span').textContent = 'TRANSMITTING ' + freq + ' Hz';
+  const label = txMode === 'dual'
+    ? ('TRANSMITTING ' + freq0 + ' + ' + freq1 + ' Hz')
+    : ('TRANSMITTING ' + (txMode === 'tone1' ? freq1 : freq0) + ' Hz');
+  status.querySelector('span').textContent = label;
 
-  addLog('tx-log', 'TX', 'Started ' + txMode + ' @ ' + freq + ' Hz');
+  addLog('tx-log', 'TX', 'Started ' + txMode + ' (' + label + ')');
   updateBinAnalysis();
 }
 
+// Helper: fade out a gain then stop+disconnect its oscillator. Kills the stop click.
+function killTone(osc, gain) {
+  if (!osc) return;
+  try {
+    if (gain && audioCtx) {
+      const now = audioCtx.currentTime;
+      // Cancel any pending ramps and fade to zero from current value.
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.linearRampToValueAtTime(0, now + TX_RAMP);
+      const oscRef = osc;
+      const gainRef = gain;
+      setTimeout(() => {
+        try { oscRef.stop(); oscRef.disconnect(); } catch(e){}
+        try { gainRef.disconnect(); } catch(e){}
+      }, (TX_RAMP * 1000) + 20);
+    } else {
+      osc.stop(); osc.disconnect();
+    }
+  } catch(e) {}
+}
+
 function stopTransmit() {
-  if (txOsc) { txOsc.stop(); txOsc.disconnect(); txOsc = null; }
-  if (txGain) { txGain.disconnect(); txGain = null; }
+  killTone(txOsc, txGain);
+  killTone(txOsc2, txGain2);
+  txOsc = null; txGain = null;
+  txOsc2 = null; txGain2 = null;
   txActive = false;
 
   const btn = document.getElementById('btn-tx');
@@ -1056,11 +1120,16 @@ document.getElementById('btn-tx').addEventListener('click', () => {
 });
 
 // ── FSK Message ──
-document.getElementById('btn-send-msg').addEventListener('click', () => {
-  const msg = document.getElementById('fsk-msg').value.trim();
-  if (!msg) return;
-  sendFSK(msg);
-});
+// (Disabled in UI for now — button is commented out. Listener guarded so the
+// page doesn't crash. Re-enable by uncommenting the FSK markup above.)
+const _btnSendMsg = document.getElementById('btn-send-msg');
+if (_btnSendMsg) {
+  _btnSendMsg.addEventListener('click', () => {
+    const msg = document.getElementById('fsk-msg').value.trim();
+    if (!msg) return;
+    sendFSK(msg);
+  });
+}
 
 async function sendFSK(message) {
   const ctx = ensureAudioCtx();
@@ -1197,8 +1266,8 @@ function analyseLoop() {
   const maxDisplayHz = 300;
   const maxBin = Math.ceil(maxDisplayHz / binWidth);
 
-  // Find peak in 30–200 Hz range
-  const minBin = Math.floor(30 / binWidth);
+  // Find peak in 10–200 Hz range
+  const minBin = Math.floor(10 / binWidth);
   const maxSearchBin = Math.ceil(200 / binWidth);
   let peakDb = -Infinity;
   let peakBin = 0;
