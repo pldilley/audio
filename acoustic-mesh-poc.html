@@ -1230,9 +1230,9 @@ async function startListening() {
     const sr = ctx.sampleRate;
     const bw = sr / FFT_SIZE;
     const minB = Math.floor(10 / bw);
-    const maxB = Math.ceil(200 / bw);
+    const maxB = Math.ceil(1000 / bw);
     resetSampler(minB, maxB);
-    console.log('[SAMPLER] Started — 5s windows, range 10–200 Hz, bin width ' + bw.toFixed(2) + ' Hz');
+    console.log('[SAMPLER] Started — 5s windows, range 10–1000 Hz, bin width ' + bw.toFixed(2) + ' Hz');
   }
 
   waterfallData = [];
@@ -1339,12 +1339,12 @@ function analyseLoop() {
 
   const sampleRate = audioCtx.sampleRate;
   const binWidth = sampleRate / FFT_SIZE; // Hz per bin
-  const maxDisplayHz = 300;
+  const maxDisplayHz = 1000;
   const maxBin = Math.ceil(maxDisplayHz / binWidth);
 
-  // Find peak in 10–200 Hz range
+  // Find peak in 10–1000 Hz range (wide enough to catch 2nd–8th harmonics of 100–250 Hz tones)
   const minBin = Math.floor(10 / binWidth);
-  const maxSearchBin = Math.ceil(200 / binWidth);
+  const maxSearchBin = Math.ceil(1000 / binWidth);
   let peakDb = -Infinity;
   let peakBin = 0;
 
@@ -1509,8 +1509,8 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
     ctx.fillText('D:' + droneFreq, dx + 2 * dpr, 34 * dpr);
   }
 
-  // Draw 50Hz harmonics markers (dim)
-  for (let hz = 50; hz <= 300; hz += 50) {
+  // Draw 100 Hz grid markers (dim) up to the full displayed range
+  for (let hz = 100; hz <= 1000; hz += 100) {
     const bin = Math.round(hz / binWidth);
     if (bin < maxBin) {
       const x = bin * barW;
