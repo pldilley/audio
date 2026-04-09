@@ -1225,6 +1225,16 @@ async function startListening() {
 
   addLog('rx-log', 'RX', 'Microphone active, FFT size: ' + FFT_SIZE);
 
+  // Initialise the 5-second sampler against the current sample rate.
+  {
+    const sr = ctx.sampleRate;
+    const bw = sr / FFT_SIZE;
+    const minB = Math.floor(10 / bw);
+    const maxB = Math.ceil(200 / bw);
+    resetSampler(minB, maxB);
+    console.log('[SAMPLER] Started — 5s windows, range 10–200 Hz, bin width ' + bw.toFixed(2) + ' Hz');
+  }
+
   waterfallData = [];
   analyseLoop();
 }
@@ -1234,6 +1244,19 @@ function stopListening() {
   if (rxAnimFrame) cancelAnimationFrame(rxAnimFrame);
   if (rxStream) { rxStream.getTracks().forEach(t => t.stop()); rxStream = null; }
   rxAnalyser = null;
+
+  // Flush any partial sampler window so you don't lose the trailing data, then disable.
+  if (samplerBinMax && samplerSampleCount > 0) {
+    const sr = audioCtx ? audioCtx.sampleRate : 48000;
+    const bw = sr / FFT_SIZE;
+    const threshold = parseInt(document.getElementById('rx-thresh').value);
+    console.log('[SAMPLER] Final partial window:');
+    emitSamplerReport(bw, threshold);
+  }
+  samplerBinMax = null;
+  samplerBinSum = null;
+  samplerSampleCount = 0;
+  console.log('[SAMPLER] Stopped');
 
   const btn = document.getElementById('btn-rx');
   btn.classList.remove('active');
@@ -1252,6 +1275,59 @@ document.getElementById('btn-rx').addEventListener('click', () => {
 let lastDetection = 0;
 let frameCount = 0;
 let lastFpsTime = performance.now();
+
+// ── 5-second sampler (logs to console.log) ──
+// Accumulates per-bin max & mean dB over a 5s window, then logs every bin
+// whose peak dB exceeded the detection threshold during that window.
+const SAMPLER_WINDOW_MS = 5000;
+let samplerWindowStart = 0;
+let samplerBinMax = null;     // Float32Array of max dB per bin in window
+let samplerBinSum = null;     // Float32Array of summed dB per bin (for mean)
+let samplerSampleCount = 0;
+let samplerMinBin = 0;
+let samplerMaxBin = 0;
+
+function resetSampler(minBin, maxBin) {
+  samplerMinBin = minBin;
+  samplerMaxBin = maxBin;
+  const n = maxBin - minBin + 1;
+  samplerBinMax = new Float32Array(n);
+  samplerBinSum = new Float32Array(n);
+  for (let i = 0; i < n; i++) samplerBinMax[i] = -Infinity;
+  samplerSampleCount = 0;
+  samplerWindowStart = performance.now();
+}
+
+function emitSamplerReport(binWidth, threshold) {
+  if (samplerSampleCount === 0) return;
+  const peaks = [];
+  for (let i = 0; i < samplerBinMax.length; i++) {
+    const maxDb = samplerBinMax[i];
+    if (maxDb > threshold) {
+      const meanDb = samplerBinSum[i] / samplerSampleCount;
+      const bin = samplerMinBin + i;
+      peaks.push({
+        freq: +(bin * binWidth).toFixed(2),
+        bin: bin,
+        peakDb: +maxDb.toFixed(1),
+        meanDb: +meanDb.toFixed(1),
+      });
+    }
+  }
+  peaks.sort((a, b) => b.peakDb - a.peakDb);
+  const ts = new Date().toISOString().split('T')[1].replace('Z', '');
+  console.log(
+    '%c[SAMPLER ' + ts + '] %c' + samplerSampleCount + ' frames over ' +
+    (SAMPLER_WINDOW_MS / 1000) + 's, threshold ' + threshold + ' dB — ' +
+    peaks.length + ' bins above threshold:',
+    'color:#0af;font-weight:bold', 'color:inherit'
+  );
+  if (peaks.length === 0) {
+    console.log('  (no bins exceeded threshold)');
+  } else {
+    console.table(peaks);
+  }
+}
 
 function analyseLoop() {
   if (!rxActive) return;
@@ -1326,6 +1402,21 @@ function analyseLoop() {
   if (peakDb > threshold && Date.now() - lastDetection > 2000) {
     lastDetection = Date.now();
     addLog('rx-log', 'RX', 'Detected ' + peakFreq.toFixed(1) + ' Hz @ ' + peakDb.toFixed(1) + ' dB');
+  }
+
+  // ── 5-second sampler accumulation ──
+  if (samplerBinMax) {
+    for (let i = minBin, j = 0; i <= maxSearchBin && i < bufferLength; i++, j++) {
+      const v = dataArray[i];
+      if (v > samplerBinMax[j]) samplerBinMax[j] = v;
+      // Treat -Infinity (silent bins) as a floor of -120 so the mean is meaningful
+      samplerBinSum[j] += (isFinite(v) ? v : -120);
+    }
+    samplerSampleCount++;
+    if (performance.now() - samplerWindowStart >= SAMPLER_WINDOW_MS) {
+      emitSamplerReport(binWidth, threshold);
+      resetSampler(minBin, maxSearchBin);
+    }
   }
 
   // Draw spectrum
