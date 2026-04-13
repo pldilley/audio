@@ -1514,14 +1514,14 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
     const bin = Math.round(hz / binWidth);
     if (bin < maxBin) {
       const x = bin * barW;
-      ctx.strokeStyle = 'rgba(122,127,148,0.15)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
       ctx.lineWidth = 1 * dpr;
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, h);
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(122,127,148,0.35)';
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
       ctx.font = (8 * dpr) + 'px JetBrains Mono';
       ctx.fillText(hz + '', x + 2 * dpr, h - 4 * dpr);
     }
