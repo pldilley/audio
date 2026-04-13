@@ -512,13 +512,13 @@
   <div class="control-group">
     <label>Freq A</label>
     <div class="freq-display" id="tx-freq0-display">53 <span>Hz</span></div>
-    <input type="range" id="tx-freq0" min="10" max="200" value="53" step="1">
+    <input type="range" id="tx-freq0" min="10" max="300" value="53" step="1">
   </div>
 
   <div class="control-group">
     <label>Freq B</label>
     <div class="freq-display" id="tx-freq1-display">59 <span>Hz</span></div>
-    <input type="range" id="tx-freq1" min="10" max="200" value="59" step="1">
+    <input type="range" id="tx-freq1" min="10" max="300" value="59" step="1">
   </div>
 
   <div class="detection-box" style="margin-bottom:1rem;">
@@ -565,7 +565,7 @@
     </div>
     <label>Drone Frequency</label>
     <div style="display:flex; align-items:center; gap:0.5rem;">
-      <input type="range" id="drone-freq" min="50" max="200" value="100" step="1" style="flex:1;">
+      <input type="range" id="drone-freq" min="50" max="300" value="100" step="1" style="flex:1;">
       <span class="mono" style="font-size:0.8rem; color:var(--warn);" id="drone-freq-display">100 Hz</span>
     </div>
     <div class="preset-row" style="margin-top:0.4rem;">
@@ -639,7 +639,7 @@
     <div class="control-group">
       <label>Target Frequency</label>
       <div class="threshold-display" id="target-freq-display">73 Hz</div>
-      <input type="range" id="rx-target" min="10" max="200" value="73" step="1">
+      <input type="range" id="rx-target" min="10" max="300" value="73" step="1">
     </div>
   </div>
 
@@ -692,7 +692,7 @@
 <div class="panel" id="panel-info">
   <div class="info-card">
     <h3>What is this?</h3>
-    <p>A proof-of-concept for data-over-sound communication using low frequencies (40–200 Hz). One device transmits tones through its speaker; another detects them via microphone using FFT (Fast Fourier Transform) analysis built into the browser.</p>
+    <p>A proof-of-concept for data-over-sound communication using low frequencies (40–300 Hz). One device transmits tones through its speaker; another detects them via microphone using FFT (Fast Fourier Transform) analysis built into the browser.</p>
     <p>The goal: test whether devices can communicate acoustically through walls using frequency-shift keying (FSK) — switching between two tones to encode binary data.</p>
   </div>
   <div class="info-card">
