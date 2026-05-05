@@ -492,7 +492,7 @@
 
 <header>
   <h1>// ACOUSTIC MESH PoC</h1>
-  <p>Low-frequency data-over-sound experiment. Transmit and detect tones using phone speakers and microphones.</p>
+  <p>Data-over-sound experiment. Transmit and detect tones using phone speakers and microphones.</p>
 </header>
 
 <div class="tabs">
@@ -510,15 +510,23 @@
   </div>
 
   <div class="control-group">
+    <label>Freq Range</label>
+    <div class="preset-row">
+      <div id="mode-low"  class="preset"        style="min-width:5rem;">Low (≤1kHz)</div>
+      <div id="mode-ultra" class="preset active" style="min-width:5rem;">Ultrasonic</div>
+    </div>
+  </div>
+
+  <div class="control-group">
     <label>Freq A</label>
-    <div class="freq-display" id="tx-freq0-display">53 <span>Hz</span></div>
-    <input type="range" id="tx-freq0" min="10" max="300" value="53" step="1">
+    <div class="freq-display" id="tx-freq0-display">15000 <span>Hz</span></div>
+    <input type="range" id="tx-freq0" min="10000" max="22000" value="15000" step="100">
   </div>
 
   <div class="control-group">
     <label>Freq B</label>
-    <div class="freq-display" id="tx-freq1-display">59 <span>Hz</span></div>
-    <input type="range" id="tx-freq1" min="10" max="300" value="59" step="1">
+    <div class="freq-display" id="tx-freq1-display">16000 <span>Hz</span></div>
+    <input type="range" id="tx-freq1" min="10000" max="22000" value="16000" step="100">
   </div>
 
   <div class="detection-box" style="margin-bottom:1rem;">
@@ -542,8 +550,16 @@
 
   <div class="control-group">
     <label>Preset Pairs</label>
-    <div class="preset-row">
-      <div class="preset active" data-f0="53" data-f1="59">53/59</div>
+    <div class="preset-row" id="presets-ultra">
+      <div class="preset active" data-f0="15000" data-f1="16000">15k/16k</div>
+      <div class="preset" data-f0="15000" data-f1="17000">15k/17k</div>
+      <div class="preset" data-f0="16000" data-f1="18000">16k/18k</div>
+      <div class="preset" data-f0="17000" data-f1="19000">17k/19k</div>
+      <div class="preset" data-f0="18000" data-f1="20000">18k/20k</div>
+      <div class="preset" data-f0="15000" data-f1="18000">15k/18k</div>
+    </div>
+    <div class="preset-row" id="presets-low" style="display:none;">
+      <div class="preset" data-f0="53" data-f1="59">53/59</div>
       <div class="preset" data-f0="53" data-f1="67">53/67</div>
       <div class="preset" data-f0="53" data-f1="79">53/79</div>
       <div class="preset" data-f0="59" data-f1="73">59/73</div>
@@ -638,8 +654,8 @@
     </div>
     <div class="control-group">
       <label>Target Frequency</label>
-      <div class="threshold-display" id="target-freq-display">73 Hz</div>
-      <input type="range" id="rx-target" min="10" max="300" value="73" step="1">
+      <div class="threshold-display" id="target-freq-display">15000 Hz</div>
+      <input type="range" id="rx-target" min="10000" max="22000" value="15000" step="100">
     </div>
   </div>
 
@@ -738,6 +754,14 @@ let rxAnimFrame = null;
 
 const FFT_SIZE = 16384; // High resolution for low-frequency discrimination
 const WATERFALL_HISTORY = 200;
+
+let ultraMode = true; // false = low freq (10–1000 Hz), true = ultrasonic (10k–22k Hz)
+
+function displayRange() {
+  return ultraMode
+    ? { minHz: 10000, maxHz: 22050, gridStep: 1000, label: hz => (hz / 1000).toFixed(0) + 'k' }
+    : { minHz: 10,    maxHz: 1000,  gridStep: 100,  label: hz => hz + '' };
+}
 let waterfallData = [];
 
 // ── Tab switching ──
@@ -753,7 +777,8 @@ document.querySelectorAll('.tab').forEach(tab => {
 // ── Presets (frequency pairs) ──
 document.querySelectorAll('.preset').forEach(p => {
   p.addEventListener('click', () => {
-    document.querySelectorAll('.preset').forEach(x => x.classList.remove('active'));
+    if (!p.dataset.f0) return; // mode-toggle buttons share .preset class — skip them
+    document.querySelectorAll('#presets-ultra .preset, #presets-low .preset').forEach(x => x.classList.remove('active'));
     p.classList.add('active');
     const f0 = parseInt(p.dataset.f0);
     const f1 = parseInt(p.dataset.f1);
@@ -777,7 +802,7 @@ document.querySelectorAll('.preset').forEach(p => {
 // ── Freq sliders ──
 document.getElementById('tx-freq0').addEventListener('input', e => {
   document.getElementById('tx-freq0-display').innerHTML = e.target.value + ' <span>Hz</span>';
-  document.querySelectorAll('.preset').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#presets-ultra .preset, #presets-low .preset').forEach(p => p.classList.remove('active'));
   if (txOsc && txActive && (txMode === 'tone' || txMode === 'dual')) {
     txOsc.frequency.setValueAtTime(parseInt(e.target.value), audioCtx.currentTime);
   }
@@ -786,7 +811,7 @@ document.getElementById('tx-freq0').addEventListener('input', e => {
 
 document.getElementById('tx-freq1').addEventListener('input', e => {
   document.getElementById('tx-freq1-display').innerHTML = e.target.value + ' <span>Hz</span>';
-  document.querySelectorAll('.preset').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#presets-ultra .preset, #presets-low .preset').forEach(p => p.classList.remove('active'));
   if (txActive && txMode === 'tone1' && txOsc) {
     txOsc.frequency.setValueAtTime(parseInt(e.target.value), audioCtx.currentTime);
   } else if (txActive && txMode === 'dual' && txOsc2) {
@@ -864,6 +889,37 @@ document.getElementById('drone-enabled').addEventListener('change', e => {
     stopDrone();
   }
 });
+
+// ── Freq range mode toggle ──
+function applyFreqMode() {
+  const isUltra = ultraMode;
+  document.getElementById('mode-ultra').classList.toggle('active', isUltra);
+  document.getElementById('mode-low').classList.toggle('active', !isUltra);
+  document.getElementById('presets-ultra').style.display = isUltra ? '' : 'none';
+  document.getElementById('presets-low').style.display  = isUltra ? 'none' : '';
+
+  const f0s = document.getElementById('tx-freq0');
+  const f1s = document.getElementById('tx-freq1');
+  const rxt = document.getElementById('rx-target');
+
+  if (isUltra) {
+    f0s.min = 10000; f0s.max = 22000; f0s.step = 100; f0s.value = 15000;
+    f1s.min = 10000; f1s.max = 22000; f1s.step = 100; f1s.value = 16000;
+    rxt.min = 10000; rxt.max = 22000; rxt.step = 100; rxt.value = 15000;
+  } else {
+    f0s.min = 10; f0s.max = 1000; f0s.step = 1; f0s.value = 53;
+    f1s.min = 10; f1s.max = 1000; f1s.step = 1; f1s.value = 59;
+    rxt.min = 10; rxt.max = 1000; rxt.step = 1; rxt.value = 73;
+  }
+
+  // Fire input events to update displays + bin analysis
+  f0s.dispatchEvent(new Event('input'));
+  f1s.dispatchEvent(new Event('input'));
+  rxt.dispatchEvent(new Event('input'));
+}
+
+document.getElementById('mode-ultra').addEventListener('click', () => { ultraMode = true;  applyFreqMode(); });
+document.getElementById('mode-low').addEventListener('click',   () => { ultraMode = false; applyFreqMode(); });
 
 document.querySelectorAll('.drone-preset').forEach(p => {
   p.addEventListener('click', () => {
@@ -1229,10 +1285,11 @@ async function startListening() {
   {
     const sr = ctx.sampleRate;
     const bw = sr / FFT_SIZE;
-    const minB = Math.floor(10 / bw);
-    const maxB = Math.ceil(1000 / bw);
+    const r = displayRange();
+    const minB = Math.floor(r.minHz / bw);
+    const maxB = Math.ceil(r.maxHz / bw);
     resetSampler(minB, maxB);
-    console.log('[SAMPLER] Started — 5s windows, range 10–1000 Hz, bin width ' + bw.toFixed(2) + ' Hz');
+    console.log('[SAMPLER] Started — 5s windows, range ' + r.minHz + '–' + r.maxHz + ' Hz, bin width ' + bw.toFixed(2) + ' Hz');
   }
 
   waterfallData = [];
@@ -1339,12 +1396,10 @@ function analyseLoop() {
 
   const sampleRate = audioCtx.sampleRate;
   const binWidth = sampleRate / FFT_SIZE; // Hz per bin
-  const maxDisplayHz = 1000;
-  const maxBin = Math.ceil(maxDisplayHz / binWidth);
-
-  // Find peak in 10–1000 Hz range (wide enough to catch 2nd–8th harmonics of 100–250 Hz tones)
-  const minBin = Math.floor(10 / binWidth);
-  const maxSearchBin = Math.ceil(1000 / binWidth);
+  const range = displayRange();
+  const minBin = Math.floor(range.minHz / binWidth);
+  const maxBin = Math.ceil(range.maxHz / binWidth);
+  const maxSearchBin = maxBin;
   let peakDb = -Infinity;
   let peakBin = 0;
 
@@ -1420,7 +1475,7 @@ function analyseLoop() {
   }
 
   // Draw spectrum
-  drawSpectrum(dataArray, maxBin, binWidth, threshold, targetFreq);
+  drawSpectrum(dataArray, minBin, maxBin, binWidth, threshold, targetFreq);
   drawWaterfall(dataArray, maxBin);
 
   // FPS counter
@@ -1434,7 +1489,7 @@ function analyseLoop() {
 }
 
 // ── Spectrum drawing ──
-function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
+function drawSpectrum(data, minBin, maxBin, binWidth, threshold, targetFreq) {
   const canvas = document.getElementById('spectrum');
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -1448,7 +1503,9 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  const barW = w / maxBin;
+  const numBins = maxBin - minBin;
+  const barW = w / numBins;
+  const binToX = bin => (bin - minBin) * barW;
 
   // Get FSK frequencies
   const fskFreq0 = parseInt(document.getElementById('tx-freq0').value);
@@ -1468,7 +1525,7 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
   ctx.setLineDash([]);
 
   // Draw FSK freq 0 marker (green)
-  const f0x = fskBin0 * barW;
+  const f0x = binToX(fskBin0);
   ctx.strokeStyle = 'rgba(74,222,128,0.6)';
   ctx.lineWidth = 2 * dpr;
   ctx.beginPath();
@@ -1477,10 +1534,10 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
   ctx.stroke();
   ctx.fillStyle = 'rgba(74,222,128,0.7)';
   ctx.font = (9 * dpr) + 'px JetBrains Mono';
-  ctx.fillText('F0:' + fskFreq0, f0x + 2 * dpr, 10 * dpr);
+  ctx.fillText('A:' + fskFreq0, f0x + 2 * dpr, 10 * dpr);
 
   // Draw FSK freq 1 marker (blue)
-  const f1x = fskBin1 * barW;
+  const f1x = binToX(fskBin1);
   ctx.strokeStyle = 'rgba(96,165,250,0.6)';
   ctx.lineWidth = 2 * dpr;
   ctx.beginPath();
@@ -1489,13 +1546,13 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
   ctx.stroke();
   ctx.fillStyle = 'rgba(96,165,250,0.7)';
   ctx.font = (9 * dpr) + 'px JetBrains Mono';
-  ctx.fillText('F1:' + fskFreq1, f1x + 2 * dpr, 22 * dpr);
+  ctx.fillText('B:' + fskFreq1, f1x + 2 * dpr, 22 * dpr);
 
   // Draw drone freq marker (orange) if enabled
   if (document.getElementById('drone-enabled').checked) {
     const droneFreq = parseInt(document.getElementById('drone-freq').value);
     const droneBin = Math.round(droneFreq / binWidth);
-    const dx = droneBin * barW;
+    const dx = binToX(droneBin);
     ctx.strokeStyle = 'rgba(251,146,60,0.5)';
     ctx.lineWidth = 2 * dpr;
     ctx.setLineDash([3 * dpr, 3 * dpr]);
@@ -1509,11 +1566,12 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
     ctx.fillText('D:' + droneFreq, dx + 2 * dpr, 34 * dpr);
   }
 
-  // Draw 100 Hz grid markers (dim) up to the full displayed range
-  for (let hz = 100; hz <= 1000; hz += 100) {
+  // Draw grid markers
+  const range = displayRange();
+  for (let hz = range.minHz + range.gridStep; hz < range.maxHz; hz += range.gridStep) {
     const bin = Math.round(hz / binWidth);
-    if (bin < maxBin) {
-      const x = bin * barW;
+    if (bin >= minBin && bin < maxBin) {
+      const x = binToX(bin);
       ctx.strokeStyle = 'rgba(255,255,255,0.1)';
       ctx.lineWidth = 1 * dpr;
       ctx.beginPath();
@@ -1523,7 +1581,7 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
 
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
       ctx.font = (8 * dpr) + 'px JetBrains Mono';
-      ctx.fillText(hz + '', x + 2 * dpr, h - 4 * dpr);
+      ctx.fillText(range.label(hz), x + 2 * dpr, h - 4 * dpr);
     }
   }
 
@@ -1531,10 +1589,10 @@ function drawSpectrum(data, maxBin, binWidth, threshold, targetFreq) {
   const droneEnabled = document.getElementById('drone-enabled').checked;
   const droneBinIdx = droneEnabled ? Math.round(parseInt(document.getElementById('drone-freq').value) / binWidth) : -1;
 
-  for (let i = 0; i < maxBin && i < data.length; i++) {
+  for (let i = minBin; i < maxBin && i < data.length; i++) {
     const db = data[i];
     const barH = Math.max(0, ((db + 80) / 60) * h);
-    const x = i * barW;
+    const x = binToX(i);
 
     if (i === fskBin0) {
       ctx.fillStyle = db > threshold ? 'rgba(74,222,128,0.95)' : 'rgba(74,222,128,0.5)';
