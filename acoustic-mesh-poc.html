@@ -619,6 +619,9 @@
   <button class="btn btn-transmit" id="btn-tx">
     ▶ START TRANSMITTING
   </button>
+  <div id="ios-audio-warn" style="display:none; margin-top:0.5rem; font-size:0.7rem; color:var(--warn); font-family:'JetBrains Mono',monospace;">
+    ⚠ iPhone: check ringer/silent switch — Web Audio is muted by it
+  </div>
 
   <!-- FSK message input disabled — re-enable with the FSK mode button later.
   <div id="fsk-input" style="display:none;">
@@ -1171,8 +1174,19 @@ function stopTransmit() {
   addLog('tx-log', 'TX', 'Stopped');
 }
 
-document.getElementById('btn-tx').addEventListener('click', () => {
-  txActive ? stopTransmit() : startTransmit();
+document.getElementById('btn-tx').addEventListener('click', async () => {
+  if (txActive) { stopTransmit(); return; }
+  // iOS Safari: AudioContext must be created AND resumed within gesture handler.
+  // await resume() keeps us in the gesture context on iOS 14.5+ so osc.start() works.
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  try { await audioCtx.resume(); } catch(e) {}
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (audioCtx.state !== 'running') {
+    console.warn('AudioContext not running after resume — state:', audioCtx.state);
+  }
+  // Show iPhone silent-switch warning after first tap
+  if (isIOS) document.getElementById('ios-audio-warn').style.display = '';
+  startTransmit();
 });
 
 // ── FSK Message ──
